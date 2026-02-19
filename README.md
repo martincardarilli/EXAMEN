@@ -24,6 +24,14 @@ npm run build
 npm start
 ```
 
+### With Docker (recommended)
+
+```bash
+docker compose up --build -d
+```
+
+This starts both the API (port 3000) and PostgreSQL (port 5432). No local Postgres needed.
+
 ## Testing with curl
 
 Auth is simulated through headers, so you can test like this:
@@ -60,20 +68,18 @@ curl http://localhost:3000/documents/<uuid-here> \
 - **Local storage vs real S3:** Simpler for dev and testing. The `storage.ts` abstracts this so switching to real S3 is just changing one file.
 - **Raw SQL vs ORM:** Went with raw pg queries to keep it simple and avoid extra dependencies. For a bigger project Prisma would be nicer.
 - **Table creation on startup vs migrations:** Using `CREATE TABLE IF NOT EXISTS` on startup. Works fine here but in production you'd want proper migrations.
-- **No input validation lib:** Manual checks for now. Would use zod or joi in a real project.
+- **Zod for validation:** Lightweight and works well with TypeScript. Validates patientId on upload and UUID format on document retrieval.
 - **Logging:** Winston writes to local files (`logs/`) and optionally to CloudWatch when credentials are present. Audit events go to a separate stream. Locally the files are enough for dev; in production CloudWatch handles retention and alerting.
 
 ## What I'd improve with more time
 
-- Real JWT auth
-- Pre-signed S3 URLs for file download
-- Input validation with zod
+- Real JWT auth with token verification
+- Pre-signed S3 URLs for secure file download
 - Pagination on list endpoint
-- Audit log table (in addition to file/CloudWatch logs, persisting in DB)
+- Audit log table in DB (in addition to file/CloudWatch logs)
 - Rate limiting
 - Tests (unit + integration)
-- Docker Compose for easy local setup
-- Proper DB migrations
+- Proper DB migrations (e.g. with node-pg-migrate)
 
 ---
 
