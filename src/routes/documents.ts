@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import pool from '../db';
+import logger from '../logger';
 import { authorize } from '../middleware/authorize';
 import { uploadFile } from '../storage';
 import { User } from '../types';
@@ -53,9 +54,16 @@ router.post('/', authorize('admin', 'doctor'), upload.single('file'), async (req
       [patientId, user.id, fileKey]
     );
 
+    logger.info('Document uploaded', {
+      docId: result.rows[0].id,
+      patientId,
+      doctorId: user.id,
+      fileKey,
+    });
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Error uploading document:', error);
+    logger.error('Error uploading document', { error: (error as Error).message });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -83,9 +91,11 @@ router.get('/', authorize('admin', 'doctor', 'patient'), async (req: Request, re
       );
     }
 
+    logger.info('Documents listed', { userId: user.id, role: user.role, count: result.rows.length });
+
     res.json(result.rows);
   } catch (error) {
-    console.error('Error listing documents:', error);
+    logger.error('Error listing documents', { error: (error as Error).message });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -115,20 +125,23 @@ router.get('/:id', authorize('admin', 'doctor', 'patient'), async (req: Request,
 
     // Check resource-level access
     if (user.role === 'doctor' && doc.doctor_id !== user.id) {
+      logger.warn('Access denied: doctor tried accessing another doctor doc', { userId: user.id, docId: id });
       res.status(403).json({ error: 'You can only view documents you created' });
       return;
     }
 
     if (user.role === 'patient' && doc.patient_id !== user.id) {
+      logger.warn('Access denied: patient tried accessing another patient doc', { userId: user.id, docId: id });
       res.status(403).json({ error: 'You can only view your own documents' });
       return;
     }
 
     // Admin passes through — no extra check needed
+    logger.info('Document retrieved', { docId: id, userId: user.id });
 
     res.json(doc);
   } catch (error) {
-    console.error('Error getting document:', error);
+    logger.error('Error getting document', { error: (error as Error).message });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

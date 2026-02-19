@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import pool from './db';
+import logger from './logger';
 import { authMiddleware } from './middleware/auth';
 import documentRoutes from './routes/documents';
 
@@ -12,6 +13,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Request logging — logs every incoming request
+app.use((req, _res, next) => {
+  logger.info(`${req.method} ${req.originalUrl}`, {
+    ip: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  next();
+});
 
 // Health check (no auth needed)
 app.get('/health', (_req, res) => {
@@ -26,15 +36,15 @@ async function start() {
   const sqlPath = path.join(__dirname, '..', 'sql', 'init.sql');
   const sql = fs.readFileSync(sqlPath, 'utf-8');
   await pool.query(sql);
-  console.log('Database ready');
+  logger.info('Database initialized');
 
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info(`Server running on port ${PORT}`);
   });
 }
 
 start().catch((err) => {
-  console.error('Failed to start:', err);
+  logger.error('Failed to start server', { error: (err as Error).message });
   process.exit(1);
 });
 

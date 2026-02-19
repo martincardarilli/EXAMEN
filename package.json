@@ -18,6 +18,7 @@
     "multer": "^2.0.2",
     "pg": "^8.18.0",
     "uuid": "^9.0.1",
+    "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
