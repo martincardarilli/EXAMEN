@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
+import { z } from 'zod';
 import pool from '../db';
 import { authorize } from '../middleware/authorize';
 import { uploadFile } from '../storage';
@@ -7,6 +8,15 @@ import { User } from '../types';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Validation schemas
+const uploadSchema = z.object({
+  patientId: z.string().min(1, 'patientId is required'),
+});
+
+const idParamSchema = z.object({
+  id: z.string().uuid('id must be a valid UUID'),
+});
 
 // Helper to get user from request
 function getUser(req: Request): User {
@@ -17,10 +27,11 @@ function getUser(req: Request): User {
 router.post('/', authorize('admin', 'doctor'), upload.single('file'), async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const { patientId } = req.body;
 
-    if (!patientId) {
-      res.status(400).json({ error: 'patientId is required' });
+    // Validate input
+    const parsed = uploadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
 
@@ -28,6 +39,8 @@ router.post('/', authorize('admin', 'doctor'), upload.single('file'), async (req
       res.status(400).json({ error: 'file is required' });
       return;
     }
+
+    const { patientId } = parsed.data;
 
     // Upload file to storage (S3 mock)
     const fileKey = await uploadFile(req.file.buffer, req.file.originalname);
@@ -81,7 +94,15 @@ router.get('/', authorize('admin', 'doctor', 'patient'), async (req: Request, re
 router.get('/:id', authorize('admin', 'doctor', 'patient'), async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const { id } = req.params;
+
+    // Validate that id is a valid UUID
+    const parsed = idParamSchema.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0].message });
+      return;
+    }
+
+    const { id } = parsed.data;
 
     const result = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
 
