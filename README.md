@@ -61,6 +61,7 @@ curl http://localhost:3000/documents/<uuid-here> \
 - **Raw SQL vs ORM:** Went with raw pg queries to keep it simple and avoid extra dependencies. For a bigger project Prisma would be nicer.
 - **Table creation on startup vs migrations:** Using `CREATE TABLE IF NOT EXISTS` on startup. Works fine here but in production you'd want proper migrations.
 - **No input validation lib:** Manual checks for now. Would use zod or joi in a real project.
+- **Logging:** Winston writes to local files (`logs/`) and optionally to CloudWatch when credentials are present. Audit events go to a separate stream. Locally the files are enough for dev; in production CloudWatch handles retention and alerting.
 
 ## What I'd improve with more time
 
@@ -68,7 +69,7 @@ curl http://localhost:3000/documents/<uuid-here> \
 - Pre-signed S3 URLs for file download
 - Input validation with zod
 - Pagination on list endpoint
-- Audit log table (who accessed what, when)
+- Audit log table (in addition to file/CloudWatch logs, persisting in DB)
 - Rate limiting
 - Tests (unit + integration)
 - Docker Compose for easy local setup
@@ -88,7 +89,7 @@ When a doctor queries documents, the SQL filters by `doctor_id = user.id`. So th
 S3 bucket is private, no public access. When someone needs to download, the API checks their permissions first, then generates a pre-signed URL that expires in a few minutes. The client uses that URL to download directly from S3. After it expires, the URL is useless.
 
 ### 4. Auditing
-I'd add an audit_log table that records: user id, role, action (read/create/list), document id, and timestamp. Written on every endpoint hit. Combined with CloudTrail for infra-level activity, you get full visibility of who accessed what.
+I have a dedicated audit logger (separate from app logs) that records every document access: who (user id + role), what (action + document id), and when (timestamp). In production this goes to its own CloudWatch log group with restricted access. Locally it writes to `logs/audit.log`. Combined with CloudTrail for infra events, you get full traceability.
 
 ### 5. Incident Scenario
 If a DB snapshot leaks, RDS encryption means the data is encrypted with KMS keys the attacker doesn't have. Also the DB only stores metadata (ids, file keys) — the actual files are in S3, a completely separate system. And UUIDs as IDs make it hard to guess or enumerate anything.
@@ -106,7 +107,7 @@ If I can ask someone, I ask. If I can't (like in a timed exam), I pick the most 
 The documents are the most obvious PHI — could be lab results, diagnoses, etc. But the metadata is also sensitive: knowing patient X visited a cardiologist reveals health info. Both need encryption, access control, and audit logging. File contents should never appear in logs.
 
 ### 10. Logging
-Never log: file contents, patient names or personal data, auth tokens, anything that identifies a patient's condition. Logs tend to be accessible to many people (devs, ops) and stored in less secure systems. PHI in logs = accidental data leak.
+Never log: file contents, patient names or personal data, auth tokens, anything that identifies a patient's condition. Logs tend to be accessible to many people (devs, ops) and stored in less secure systems. PHI in logs = accidental data leak. That's why the audit logger only records opaque IDs, never the actual data.
 
 ### 11. Compliance
 For production healthcare: real auth with MFA, a BAA with AWS, comprehensive audit logging, data retention/deletion policies, regular security audits, employee training, incident response procedures, network isolation with VPCs and security groups, automated dependency scanning.

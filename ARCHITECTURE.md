@@ -46,9 +46,13 @@ DB passwords, keys, etc. go in **AWS Secrets Manager**. The app reads them at st
 
 ## Auditing
 
-Two levels:
-- **App level:** Log every document access to CloudWatch (user id, action, document id, timestamp). Never log file contents or patient names — just IDs.
-- **Infra level:** CloudTrail captures all AWS API activity.
+Three layers:
+
+- **Audit logger (app level):** A dedicated winston logger that writes every PHI access event (create, read, list, access denied) to `logs/audit.log` locally and to a separate CloudWatch log group (`patient-docs-audit`) in production. Each entry includes: action, actor id, actor role, document id, patient id, timestamp. This log group gets stricter IAM permissions — only security/compliance people can read it.
+- **App logger (app level):** General operational logs (requests, errors, auth events) go to `logs/combined.log` and a separate CloudWatch log group. Useful for debugging but doesn't mix with auditing.
+- **Infra level:** CloudTrail captures all AWS API activity (S3 access, RDS queries, IAM changes).
+
+Logs never include file contents, patient names, or auth tokens — only opaque IDs.
 
 ## HIPAA considerations
 

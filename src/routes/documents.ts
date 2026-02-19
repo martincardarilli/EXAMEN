@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import pool from '../db';
-import logger from '../logger';
+import logger, { auditLogger } from '../logger';
 import { authorize } from '../middleware/authorize';
 import { uploadFile } from '../storage';
 import { User } from '../types';
@@ -61,6 +61,14 @@ router.post('/', authorize('admin', 'doctor'), upload.single('file'), async (req
       fileKey,
     });
 
+    auditLogger.info('DOCUMENT_CREATED', {
+      action: 'create',
+      docId: result.rows[0].id,
+      patientId,
+      actorId: user.id,
+      actorRole: user.role,
+    });
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     logger.error('Error uploading document', { error: (error as Error).message });
@@ -92,6 +100,13 @@ router.get('/', authorize('admin', 'doctor', 'patient'), async (req: Request, re
     }
 
     logger.info('Documents listed', { userId: user.id, role: user.role, count: result.rows.length });
+
+    auditLogger.info('DOCUMENTS_LISTED', {
+      action: 'list',
+      actorId: user.id,
+      actorRole: user.role,
+      count: result.rows.length,
+    });
 
     res.json(result.rows);
   } catch (error) {
@@ -126,18 +141,28 @@ router.get('/:id', authorize('admin', 'doctor', 'patient'), async (req: Request,
     // Check resource-level access
     if (user.role === 'doctor' && doc.doctor_id !== user.id) {
       logger.warn('Access denied: doctor tried accessing another doctor doc', { userId: user.id, docId: id });
+      auditLogger.warn('ACCESS_DENIED', { action: 'read', docId: id, actorId: user.id, actorRole: 'doctor' });
       res.status(403).json({ error: 'You can only view documents you created' });
       return;
     }
 
     if (user.role === 'patient' && doc.patient_id !== user.id) {
       logger.warn('Access denied: patient tried accessing another patient doc', { userId: user.id, docId: id });
+      auditLogger.warn('ACCESS_DENIED', { action: 'read', docId: id, actorId: user.id, actorRole: 'patient' });
       res.status(403).json({ error: 'You can only view your own documents' });
       return;
     }
 
     // Admin passes through — no extra check needed
     logger.info('Document retrieved', { docId: id, userId: user.id });
+
+    auditLogger.info('DOCUMENT_ACCESSED', {
+      action: 'read',
+      docId: id,
+      patientId: doc.patient_id,
+      actorId: user.id,
+      actorRole: user.role,
+    });
 
     res.json(doc);
   } catch (error) {
